@@ -1,3 +1,4 @@
+#ifndef M5STACK
 #include <Arduino.h>
 #include <SPIFFS.h>
 #include <SD.h>
@@ -12,39 +13,60 @@ SPIClass spi(VSPI);
 void setup() {
     Serial.begin(115200);
     SPIFFS.begin(false);
-    SD.begin(5,spi);
+    //SD.begin(5,spi);
     
     if(!sound.initialize()) {
         Serial.println("Unable to initialize I2S audio");
         while(1);
     }
     wav_file_source wav;
-    File file = SD.open("/proto5.wav","rb");
+    waveform_source<> wform;
+    File file = SPIFFS.open("/demo.wav","rb");
     file_stream fs(file);
-    sfx_result r = wav_file_source::open(&fs,&wav);
-    if(r!=sfx_result::success) {
+    sfx_result r = wav_file_source::open(fs,&wav);
+        if(r!=sfx_result::success) {
         Serial.print("Error loading wav: ");
         Serial.println((int)r);
         while(1);
     }
-    transport trans;
-    r=transport::create(&sound,&wav,&trans);
     wav.loop(true);
-    trans.volume(.10);
+    
+    mixer_source<2> mixer;
+    r=mixer_source<2>::create(&mixer);
+    if(r!=sfx_result::success) {
+        Serial.print("Error creating mixer: ");
+        Serial.println((int)r);
+        while(1);
+    }
+    mixer.voice(0,&wform);
+    mixer.level(0,.25);
+    mixer.voice(1,&wav);
+    mixer.level(1,.5);
+    transport trans;
+    r=transport::create(sound,mixer,&trans);
     if(r!=sfx_result::success) {
         Serial.print("Error initializing transport: ");
         Serial.println((int)r);
         while(1);
     }
-    uint16_t samp[audio_t::dma_size];
     size_t written;
-
+    float fq = 200;
+    float fd=1;
+    // make frequency go up and down in a loop
     while( r==sfx_result::success) {
         r=trans.update();
-      
+        wform.frequency(fq);
+        if(fq+fd>2600) {
+            fd=-fd;
+        }
+        if(fq+fd<200)  {
+            fd=-fd;
+        }
+        fq+=fd;
     }
     file.close();
 }
 void loop() {
     
 }
+#endif
